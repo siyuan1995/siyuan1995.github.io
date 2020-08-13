@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta
+            name="viewport"
+            content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Sketch update validation - 4.15</title>
+    <link
+            rel="stylesheet"
+            href="https://js.arcgis.com/4.15/dgrid/css/dgrid.css"
+    />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+
+    <link
+            rel="stylesheet"
+            href="https://js.arcgis.com/4.15/esri/themes/light/main.css"
+    />
+    <script src="https://js.arcgis.com/4.15/"></script>
+
+    <style>
+        html,
+        body,
+        #viewDiv {
+            padding: 0;
+            margin: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background-color: #57585a;
+        }
+
+        #viewDiv1 {
+            position: absolute;
+            bottom: 30%;
+            left:0;
+            height: 70%;
+            width: 40%;
+            overflow: hidden;
+            background-color: #57585a;
+        }
+
+        #viewDiv2 {
+            position: absolute;
+            right: 0;
+            bottom: 30%;
+            left:40%;
+            height: 70%;
+            width: 40%;
+            overflow: hidden;
+            background-color: #57585a;
+        }
+
+        #panel {
+            position: absolute;
+            right: 0;
+            bottom: 30%;
+            left:80%;
+            height: 70%;
+            width: 20%;
+            overflow-x: scroll;
+            overflow-y: scroll;
+            /* left value plus width value must equal to 100%, same as top value and height value*/
+
+        }
+
+        #info,
+        #gridDisplay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 30%;
+            background-color: #bababa;
+            border-color: grey;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        #gridDisplay {
+            z-index: 80;
+        }
+
+        #info {
+            z-index: 90;
+            font-size: 16px;
+            padding-left: 20px;
+        }
+
+        #info * {
+            padding-right: 20px;
+        }
+
+        .info {
+            line-height: 20px;
+            padding-left: 5px !important;
+        }
+
+        .dgrid-header,
+        .dgrid-header-row {
+            background-color: #eee;
+            color: #57585a;
+        }
+
+        .dgrid-row-even {
+            background-color: #f7f8f8;
+        }
+
+        .dgrid-row-odd {
+            background-color: #efefef;
+        }
+
+        .dgrid-selected {
+            background: #b4daf5;
+        }
+
+        .dgrid-row {
+            border: none;
+        }
+    </style>
+
+    <script>
+        require(["esri/Map",
+            "esri/Basemap",
+            "esri/views/MapView",
+            "esri/geometry/support/webMercatorUtils",
+            "esri/geometry/Polygon",
+            "esri/layers/FeatureLayer",
+            "esri/layers/GraphicsLayer",
+            "esri/widgets/Sketch/SketchViewModel",
+            "esri/Graphic",
+            "esri/widgets/Legend",
+            "esri/widgets/Expand",
+            "dgrid/OnDemandGrid",
+            "dgrid/extensions/ColumnHider",
+            "dojo/store/Memory",
+            "dstore/legacy/StoreAdapter",
+            "dgrid/Selection"],function (
+                 Map,
+                 Basemap,
+                 MapView,
+                 webMercatorUtils,
+                 Polygon,
+                 FeatureLayer,
+                 GraphicsLayer,
+                 SketchViewModel,
+                 Graphic,
+                 Legend,
+                 Expand,
+                 OnDemandGrid,
+                 ColumnHider,
+                 Memory,
+                 StoreAdapter,
+                 Selection) {
+
+            let featureLayerView,featureLayerView2, highlightContent,grid,featureLayer,template,heatmapRenderer,classrenderer,countryChart,languageChart,map,map2,view,view2,pointGraphic
+            // numEn,numEs,numHi,numAr,numIt;
+            let index = 0;
+            template = {
+                title: "Tweets Information:",
+                content: [
+                    {
+                        type: "fields",
+                        fieldInfos: [
+                            {fieldName:"tweet_text",label:"tweet_text"},
+                            {fieldName:"tweet_timestamp",label:"tweet_timestamp"},
+                            {fieldName:"tweet_language",label:"tweet_language"},
+                            {fieldName:"tweet_favourites",label:"tweet_favourites"},
+                            {fieldName:"tweet_retweets",label:"tweet_retweets"},
+                            {fieldName:"tweet_quotes",label:"tweet_quotes"},
+                            {fieldName:"tweet_country_code",label:"tweet_country_code"},
+
+                        ]
+                    }
+                ]
+            }
+            heatmapRenderer = {
+                type: "heatmap",
+                colorStops: [
+                    { color: "rgba(63, 40, 102, 0)", ratio: 0 },
+                    { color: "#360505", ratio: 0.083 },
+                    { color: "#470707", ratio: 0.166 },
+                    { color: "#590808", ratio: 0.249 },
+                    { color: "#6f0a0a", ratio: 0.332 },
+                    { color: "#7d0b0b", ratio: 0.415 },
+                    { color: "#a80f0f", ratio: 0.498 },
+                    { color: "#bd1111", ratio: 0.581 },
+                    { color: "#e51515", ratio: 0.664 },
+                    { color: "#9e9e00", ratio: 0.747 },
+                    { color: "#caca00", ratio: 0.83 },
+                    { color: "#f1df45", ratio: 0.913 },
+                    { color: "#ffff00", ratio: 1 }
+                ],
+                maxPixelIntensity: 25,
+                minPixelIntensity: 0
+            }
+            classrenderer = {
+                type: "simple",
+                symbol: {
+                    type: "simple-marker",
+                    color: "red",
+                },
+                field: "tweet_retweets",
+                visualVariables:[
+                    {
+                        type: "size",
+                        field: "tweet_retweets",
+                        stops: [
+                            {value: 100,size:4},
+                            {value: 3000,size:10},
+                            {value: 7000,size:20},
+                            {value: 10000,size:30},
+                            {value: 99999,size:50},
+
+                        ]
+
+                    }
+                ]
+
+            }
+            featureLayer = new FeatureLayer({
+                portalItem: {
+                    id: "c5911cd53402482e82254109c6e35a95"
+                },
+                outFields: ["*"],
+                popupTemplate:template,
+                renderer: classrenderer
+
+            });
+            featureLayer2 = new FeatureLayer({
+                portalItem: {
+                    id: "62bafa3e3d644c778e0fb923df267b13"
+                },
+                outFields: ["*"],
+            })
+            map = new Map({
+                basemap: "dark-gray",
+                layers: [featureLayer]
+
+            }); // This is the main map
+            var basemap2 = new Basemap({
+                portalItem: {
+                    id: "8d91bd39e873417ea21673e0fee87604"  // WGS84 Streets Vector webmap
+                }
+                });
+            map2 = new Map({
+                basemap: basemap2,
+                layers: [featureLayer2] // A layer may only be added to one parent, adding the same layer to multiple maps is not possible.
+            }); // This is the sync map
+            view = new MapView({
+                map:map,
+                container:"viewDiv1",
+                zoom: 4,
+                center: [-74,40]
+            }); // add map and view
+            view2 = new MapView({
+                map:map2,
+                container:"viewDiv2",
+                zoom: 4,
+                center: [-74,40]
+            }); // add map and view
+            
+            view.on("drag",function(evt){
+                if(evt.action=='end') {
+                    const dragarea = Polygon.fromExtent(view.extent);
+                    view2.goTo({
+                        center: [view.center.longitude, view.center.latitude]
+                    })
+                    getMap2Statistics(dragarea)
+
+                }
+            })
+            view.watch("scale",function(res){
+                console.log(res)
+                console.log(view.scale)
+                const scalearea = Polygon.fromExtent(view.extent);
+                view2.scale=view.scale
+                getMap2Statistics(scalearea)
+
+
+            })
+            
+            view2.on("drag",function(evt){
+                if(evt.action=='end') {
+                    console.log(view.extent)
+                    view.goTo({
+                        center: [view2.center.longitude, view2.center.latitude]
+                    })
+                }
+            })
+            view2.watch("scale",function(res){
+                view.scale = view2.scale
+            })
+
+            polygonGraphicsLayer = new GraphicsLayer();
+            const selectButton = document.getElementById("select-by-polygon");
+            const showHeatmap = document.getElementById("showHeatmap");
+            const gridFields = [
+                "__OBJECTID",
+                "tweet_id",
+                "tweet_text",
+                "tweet_language",
+                "tweet_favorites",
+                "tweet_retweets",
+                "tweet_quotes",
+                "tweet_country_code"
+
+            ];
+            const dataStore = new StoreAdapter({
+                objectStore: new Memory({
+                    idProperty: "__OBJECTID"
+                })
+            }); // create a new datastore for the on demandgrid
+            const gridDiv = document.getElementById("grid");
+            const infoDiv = document.getElementById("info");
+
+            map.add(polygonGraphicsLayer); // add polygonlayer to contain polygon
+            view.ui.add("select-by-polygon", "top-left");// add polygon select button
+            view.ui.add("showHeatmap", "top-left");// add heatmap visualization button
+            selectButton.addEventListener("click", function() {
+                clearUpSelection();
+                view.graphics.removeAll();
+                grid.clearSelection();
+                sketchViewModel.create("polygon");
+                languageChart.update();
+            });//
+            showHeatmap.addEventListener("click",function () {
+                if(index < 999998) {
+                    index = index +1;
+                    judge = index % 2;
+                    if (judge != 0) {
+                        featureLayer.renderer = heatmapRenderer
+                    }else{
+                        featureLayer.renderer = classrenderer
+                    }
+                }else {
+                    index = 1;
+                    featureLayer.renderer = heatmapRenderer
+                    console.log(index);
+                }
+            })
+
+            // create a new sketch view model set its layer
+            sketchViewModel = new SketchViewModel({
+                view: view,
+                layer: polygonGraphicsLayer,
+                pointSymbol: {
+                    type: "simple-marker",
+                    color: [255, 255, 255, 0],
+                    size: "1px",
+                    outline: {
+                        color: "gray",
+                        width: 0
+                    }
+                }
+            });
+            sketchViewModel.on("create", function(event) {
+                if (event.state === "complete") {
+                    // this polygon will be used to query features that intersect it
+                    polygonGraphicsLayer.remove(event.graphic);
+                    selectFeatures(event.graphic.geometry);
+                    updateTweetsChart(event.graphic.geometry,languageChart)
+                    updateCountryChart(event.graphic.geometry,countryChart)
+                }
+            }); // add click event to complete of drawing of polygon
+            featureLayer.when(function () {
+                createGrid(featureLayer.fields);
+                view.whenLayerView(featureLayer).then(function(layerView) {
+                    featureLayerView = layerView;
+                });
+            }).catch(errorCallback)
+            featureLayer2.when(function () {
+                view2.whenLayerView(featureLayer2).then(function(layerView) {
+                    featureLayerView2 = layerView;
+                });
+            }).catch(errorCallback)
+            view.when().then(function () {
+                createCharts();
+            })
+
+            function selectFeatures(geometry) {
+                console.log(geometry)
+                view.graphics.removeAll();
+                if (featureLayerView){
+                    const query = {geometry:geometry,outFields:["*"]}
+                    featureLayerView.queryFeatures(query).then(function (results) {
+                        const graphics = results.features;
+                        if (graphics.length>0) {
+                            view.goTo(geometry.extent.expand(2));
+                            gridDiv.style.zIndex = 90; // this is the stack order to control which panel to show, the greater stack order is always in front of lower one
+                            infoDiv.style.zIndex = 80;
+                            document.getElementById("featureCount").innerHTML =
+                                "<b>Showing attributes for " +
+                                graphics.length.toString() +
+                                " features </b>";
+                        } else {
+                            gridDiv.style.zIndex = 80;
+                            infoDiv.style.zIndex = 90;
+                        }
+
+                        if(highlightContent){
+                            highlightContent.remove();
+                        }
+
+                        highlightContent = featureLayerView.highlight(graphics);
+                        const data = graphics.map(function(feature, i) {
+                            return (
+                                Object.keys(feature.attributes)
+                                    .filter(function(key) {
+                                        // get fields that exist in the grid
+                                        return gridFields.indexOf(key) !== -1;
+                                    })
+                                    // need to create key value pairs from the feature
+                                    // attributes so that info can be displayed in the grid
+                                    .reduce(function(obj, key) {
+                                        obj[key] = feature.attributes[key];
+                                        return obj;
+                                    }, {})
+                            );
+                        });
+                        dataStore.objectStore.data = data;
+                        grid.set("collection", dataStore);
+
+
+                    }).catch(errorCallback)
+                }
+            }
+
+            function createGrid(fields) {
+                var columns = fields
+                    .filter(function(field, i) {
+                        if (gridFields.indexOf(field.name) !== -1) {
+                            return field;
+                        }
+                    })
+                    .map(function(field) {
+                        if (field.name === "__OBJECTID") {
+                            return {
+                                field: field.name,
+                                label: field.name,
+                                sortable: true,
+                                hidden: true
+                            };
+                        } else {
+                            return {
+                                field: field.name,
+                                label: field.alias,
+                                sortable: true
+                            };
+                        }
+                    });
+                grid = new (OnDemandGrid.createSubclass([Selection, ColumnHider]))(
+                    {
+                        columns: columns
+                    },
+                    "grid"
+                );
+                grid.on("dgrid-select", selectFeatureFromGrid);
+
+            };
+
+            function clearUpSelection() {
+                view.graphics.removeAll();
+                grid.clearSelection();
+            }
+
+            function selectFeatureFromGrid(event) {
+                view.popup.close();
+                const row = event.rows[0];
+                console.log(row.data.__OBJECTID)
+                const objId = row.data.__OBJECTID;
+                const query = {objectIds:[parseInt(objId)],outFields:["*"],returnGeometry:true}
+                featureLayerView.queryFeatures(query).then(function (result) {
+                    const graphic = result.features;
+                    view.graphics.removeAll();
+                    const selectedGraphic = new Graphic({
+                        geometry: graphic[0].geometry,
+                        symbol: {
+                            type: "simple-marker",
+                            style: "circle",
+                            color: "orange",
+                            outline: {color: "yellow", width:2}
+                        }
+                    })
+                    view.graphics.add(selectedGraphic);
+
+                }).catch(errorCallback)
+
+            }
+
+            function createCharts() {
+                const languageCanvas = document.getElementById("language-chart");
+                const countryCanvas = document.getElementById("country-chart");
+
+                languageChart = new Chart(languageCanvas.getContext("2d"),{
+                    type: "doughnut",
+                    data: {
+                        labels:[],
+                        datasets:[
+                            {
+                                label: "Tweets amount in this language",
+                                data: [0,0,0,0,0]
+                            }
+                        ],
+                        options:{
+                            responsive:true,
+                            legend:{display:true},
+                            title: {
+                                display: true,
+                                text: "Country distribution"
+                            }
+                        }
+                    },
+                    options: []
+
+                })
+                countryChart = new Chart(countryCanvas.getContext("2d"),{
+                    type: "bar",
+                    data: {
+                        labels:[],
+                        datasets:[
+                            {
+                                label: "Tweets country distribution",
+                                data: [0,0,0,0,0]
+                            }
+                        ],
+                        options:{
+                            responsive:true,
+                            legend:{display:true},
+                            title: {
+                                display: true,
+                                text: "Country distribution"
+                            }
+                        }
+                    },
+                    options: []
+
+                })
+
+            }
+
+            function errorCallback(error) {
+                console.log("error:", error);
+            };
+
+            function updateTweetsChart(geometry,chart) {
+                chart.data.labels = ["English","Spanish","Hindi","Arabic","Italian"]
+                chart.data.datasets[0].backgroundColor = ["#325722","#291d6c","#571613","#646400","#cd9b2d"]
+                if(featureLayerView) {
+                    var sumEn = {
+                        onStatisticField: "CASE WHEN tweet_language='en' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_language_num",
+                        statisticType: "sum"
+                    }
+                    var sumEs = {
+                        onStatisticField: "CASE WHEN tweet_language='es' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_language_num",
+                        statisticType: "sum"
+                    }
+                    var sumHi = {
+                        onStatisticField: "CASE WHEN tweet_language='hi' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_language_num",
+                        statisticType: "sum"
+                    }
+                    var sumAr = {
+                        onStatisticField: "CASE WHEN tweet_language='ar' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_language_num",
+                        statisticType: "sum"
+                    }
+                    var sumIt = {
+                        onStatisticField: "CASE WHEN tweet_language='it' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_language_num",
+                        statisticType: "sum"
+                    }
+                    const queryEN = {geometry:geometry,outFields:["*"],outStatistics:sumEn}
+                    const queryEs = {geometry:geometry,outFields:["*"],outStatistics:sumEs}
+                    const queryHi = {geometry:geometry,outFields:["*"],outStatistics:sumHi}
+                    const queryAr = {geometry:geometry,outFields:["*"],outStatistics:sumAr}
+                    const queryIt = {geometry:geometry,outFields:["*"],outStatistics:sumIt}
+
+
+                    featureLayerView.queryFeatures(queryEN).then(function (results) {
+                        console.log(results.features[0].attributes.Tweet_language_num)
+                        chart.data.datasets[0].data[0]=results.features[0].attributes.Tweet_language_num
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryEs).then(function (results) {
+                        console.log(results.features[0].attributes.Tweet_language_num)
+                        chart.data.datasets[0].data[1]=results.features[0].attributes.Tweet_language_num
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryHi).then(function (results) {
+                        console.log(results.features[0].attributes.Tweet_language_num)
+                        chart.data.datasets[0].data[2]=results.features[0].attributes.Tweet_language_num
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryAr).then(function (results) {
+                        console.log(results.features[0].attributes.Tweet_language_num)
+                        chart.data.datasets[0].data[3]=results.features[0].attributes.Tweet_language_num
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryIt).then(function (results) {
+                        console.log(results.features[0].attributes.Tweet_language_num)
+                        chart.data.datasets[0].data[4]=results.features[0].attributes.Tweet_language_num
+                        chart.update();
+                    })
+
+                    chart.update();
+
+
+                }
+
+            }
+
+            function updateCountryChart(geometry,chart) {
+                chart.data.labels = ["Unite States","Indian","United Kingdom","Italian","Korean"]
+                chart.data.datasets[0].backgroundColor = ["#97201f","#0c0d7e","#197966","#bfb414","#cd9b2d"]
+                if(featureLayerView) {
+                    var sumUS = {
+                        onStatisticField: "CASE WHEN tweet_country_code='US' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_country_code_num",
+                        statisticType: "sum"
+                    }
+                    var sumIN = {
+                        onStatisticField: "CASE WHEN tweet_country_code='IN' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_country_code_num",
+                        statisticType: "sum"
+                    }
+                    var sumGB = {
+                        onStatisticField: "CASE WHEN tweet_country_code='GB' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_country_code_num",
+                        statisticType: "sum"
+                    }
+                    var sumIT = {
+                        onStatisticField: "CASE WHEN tweet_country_code='IT' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_country_code_num",
+                        statisticType: "sum"
+                    }
+                    var sumKR = {
+                        onStatisticField: "CASE WHEN tweet_country_code='KR' THEN 1 ELSE 0 END",  // service field for 2015 population
+                        outStatisticFieldName: "Tweet_country_code_num",
+                        statisticType: "sum"
+                    }
+
+
+                    const queryUS = {geometry:geometry,outFields:["*"],outStatistics:sumUS}
+                    const queryIN = {geometry:geometry,outFields:["*"],outStatistics:sumIN}
+                    const queryGB = {geometry:geometry,outFields:["*"],outStatistics:sumGB}
+                    const queryIT = {geometry:geometry,outFields:["*"],outStatistics:sumIT}
+                    const queryKR = {geometry:geometry,outFields:["*"],outStatistics:sumKR}
+
+                    featureLayerView.queryFeatures(queryUS).then(function (results) {
+                        chart.data.datasets[0].data[0]=results.features[0].attributes.Tweet_country_code_num;
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryIN).then(function (results) {
+                        chart.data.datasets[0].data[1]=results.features[0].attributes.Tweet_country_code_num;
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryGB).then(function (results) {
+                        chart.data.datasets[0].data[2]=results.features[0].attributes.Tweet_country_code_num;
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryIT).then(function (results) {
+                        chart.data.datasets[0].data[3]=results.features[0].attributes.Tweet_country_code_num;
+                        chart.update();
+                    })
+                    featureLayerView.queryFeatures(queryKR).then(function (results) {
+                        chart.data.datasets[0].data[4]=results.features[0].attributes.Tweet_country_code_num;
+                        chart.update();
+                    })
+
+
+                }
+
+
+            }
+        
+            function getMap2Statistics(geometry) {
+
+                // Find the extent of the view, then use this exten as geometry to query features in 
+                // map 2, the coordinates might be to be converted for query.
+                view2.graphics.removeAll();
+                geometry.type = 'polygon'
+                if (featureLayerView2) {
+                    const query = {geometry:geometry,outFields:["*"]}
+                    featureLayerView2.queryFeatures(query).then(function(results){
+                        if(results.features.length>0){
+                            console.log(results.features.length)
+                        }
+                    })
+                }
+            }
+        })
+    </script>
+</head>
+
+<body>
+    <div id="viewDiv">
+        <div id="select-by-polygon" class="esri-widget esri-widget--button esri-widget esri-interactive" title="Select features by polygon">
+            <span class="esri-icon-checkbox-unchecked"></span>
+
+        </div>
+        <div id="showHeatmap" class="esri-widget esri-widget--button esri-widget esri-interactive" title="Show Heatmap">
+            <span class="esri-icon-radio-checked"></span>
+        </div>
+        <div id="info" class="esri-widget">
+            <span class="info" style="background-color: ghostwhite; padding-right: 0px; width: 100px"> <b>Created by Tristan Liu. Contact: nelsonlsy@hotmail.com</b> </span> <br />
+            <br/>
+            <span class="info"> <b>Instructions</b> </span> <br />
+            <ul>
+                <li>
+                   If this content is displayed then it means no feature is selected
+                </li>
+                <br/>
+                <li>
+                    Select features using select by polygon tool on the top left below + - mark. Attributes of selected
+                    features will be displayed here.
+                </li>
+                <br />
+                <li>
+                    Click on a row to select a feature associated with it or click on a
+                    feature to display its popup.
+                </li>
+            </ul>
+        </div>
+        <div id="gridDisplay">
+            <span class="info" id="featureCount"></span>
+            <div id="grid"></div>
+        </div>
+        <div id="panel" style="background-color: #363638">
+            <div style="padding: 10px; overflow: auto">
+                <canvas id="language-chart" height="300" width="500" ></canvas>
+                <canvas id="country-chart" height="600" width="500" style="margin-top: 30px"></canvas>
+            </div>
+        </div>
+        <div id="viewDiv2" style="background-color: #363638">
+
+        </div>
+        <div id="viewDiv1" style="background-color: #363638">
+
+        </div>
+    </div>
+
+</body>
+</html>
